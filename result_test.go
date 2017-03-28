@@ -12,18 +12,19 @@ func TestResultManagerPathFound(t *testing.T) {
 		StartedAt: time.Now(),
 	}
 	jobs := NewJobsStatus()
-	queue := MakeSearchQueue(42)
+	queue := MakeSearchQueue()
 	manager := NewResultManager(initialSearch, jobs, queue)
 
 	manager.Emmit(Search{
-		Start:     "Segment",
-		End:       "Segment",
+		Start: "Segment",
+		End:   "Segment",
+		History: []string{
+			"Maxence",
+			"Segment",
+		},
 		StartedAt: initialSearch.StartedAt,
 	})
-
-	if err := manager.Listen(); err != nil {
-		t.Error(err)
-	}
+	manager.Listen()
 }
 
 func TestResultManagerPathNotFound(t *testing.T) {
@@ -33,14 +34,11 @@ func TestResultManagerPathNotFound(t *testing.T) {
 		StartedAt: time.Now(),
 	}
 	jobs := NewJobsStatus()
-	queue := MakeSearchQueue(42)
+	queue := MakeSearchQueue()
 	manager := NewResultManager(initialSearch, jobs, queue)
 
 	manager.Emmit(initialSearch)
-
-	if err := manager.Listen(); err == nil {
-		t.Error("err should not be nil")
-	}
+	manager.Listen()
 }
 
 func TestResultManagerNewSearch(t *testing.T) {
@@ -50,7 +48,7 @@ func TestResultManagerNewSearch(t *testing.T) {
 		StartedAt: time.Now(),
 	}
 	jobs := NewJobsStatus()
-	queue := MakeSearchQueue(42)
+	queue := MakeSearchQueue()
 	manager := NewResultManager(initialSearch, jobs, queue)
 
 	jobs.Inc()
@@ -67,7 +65,5 @@ func TestResultManagerNewSearch(t *testing.T) {
 		})
 	}()
 
-	if err := manager.Listen(); err != nil {
-		t.Error(err)
-	}
+	manager.Listen()
 }

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-
-	"github.com/pkg/errors"
 )
 
 // ResultEmitter is the interface to emit a search result.
@@ -34,7 +32,7 @@ func NewResultManager(initialSeach Search, s JobsStatuer, q Queuer) *ResultManag
 		intialSearch: initialSeach,
 		jobs:         s,
 		queue:        q,
-		resChan:      make(chan Search, 256),
+		resChan:      make(chan Search, 4096),
 	}
 }
 
@@ -42,31 +40,33 @@ func (m *ResultManager) Emmit(res Search) {
 	m.resChan <- res
 }
 
-func (m *ResultManager) Listen() (err error) {
+func (m *ResultManager) Listen() {
 	for res := range m.resChan {
 		// Complete path found.
 		if len(res.Start) == len(res.End) &&
 			strings.ToLower(res.Start) == strings.ToLower(res.End) {
+			historyEntry := strings.Replace(res.Start, "_", " ", -1)
+
+			res.History = append(res.History, historyEntry)
 			res.AchievedAt = time.Now()
+
 			fmt.Println(res)
+			fmt.Printf("\033[91m%v links processed\033[00m\n\n", m.jobs.Total())
 			break
 		}
 
 		// No path found.
 		if m.queue.Len() == 0 && m.jobs.Count() == 0 {
-			err = errors.Errorf("no path found for %v to %v",
+			fmt.Println("\033[00;1mResult:\033[00m")
+			fmt.Printf("  \033[91mno path found for %v to %v\033[00m\n\n",
 				m.intialSearch.Start,
-				m.intialSearch.End)
-			fmt.Println(err)
+				m.intialSearch.End,
+			)
 			break
 		}
 
 		// New search to queue.
-		if m.jobs.IsHandled(res) {
-			continue
-		}
 		m.queue.Enqueue(res)
-		m.jobs.SetHandled(res)
 	}
 	return
 }

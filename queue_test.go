@@ -3,7 +3,7 @@ package wikirace
 import "testing"
 
 func TestSearchQueue(t *testing.T) {
-	q := MakeSearchQueue(42)
+	q := MakeSearchQueue()
 	q.Enqueue(Search{
 		Start: "Maxence",
 	})

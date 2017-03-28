@@ -15,9 +15,10 @@ import (
 
 // JobsStatuer is the interface to get or modify the overall job status.
 type JobsStatuer interface {
-	Count() int
 	Inc()
 	Dec()
+	Count() int
+	Total() int
 	IsHandled(s Search) bool
 	SetHandled(s Search)
 }
@@ -36,13 +37,6 @@ func NewJobsStatus() *JobsStatus {
 	}
 }
 
-func (s *JobsStatus) Count() int {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-
-	return s.count
-}
-
 func (s *JobsStatus) Inc() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -58,6 +52,20 @@ func (s *JobsStatus) Dec() {
 	if s.count < 0 {
 		s.count = 0
 	}
+}
+
+func (s *JobsStatus) Count() int {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	return s.count
+}
+
+func (s *JobsStatus) Total() int {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+
+	return len(s.handledJobs)
 }
 
 func (s *JobsStatus) IsHandled(search Search) bool {
@@ -121,6 +129,7 @@ func (p *JobPool) Stop() {
 }
 
 func (p *JobPool) doJob(s Search) {
+	p.jobs.SetHandled(s)
 	p.jobs.Inc()
 	defer p.jobs.Dec()
 
@@ -142,12 +151,12 @@ func (p *JobPool) doJob(s Search) {
 	}
 	defer res.Body.Close()
 
-	if err = parseHTML(res.Body, s, p.res); err != nil {
+	if err = p.parseHTML(res.Body, s); err != nil {
 		fmt.Printf("\033[91m%v ~> KO: %v\n\033[00m", s.Start, err)
 	}
 }
 
-func parseHTML(body io.Reader, s Search, e ResultEmitter) error {
+func (p *JobPool) parseHTML(body io.Reader, s Search) error {
 	z := html.NewTokenizer(body)
 	for {
 		switch token := z.Next(); token {
@@ -188,13 +197,14 @@ func parseHTML(body io.Reader, s Search, e ResultEmitter) error {
 				continue
 			}
 
-			history := make([]string, len(s.History))
-			copy(history, s.History)
-
-			go e.Emmit(Search{
-				Start:   name,
-				History: history,
-			})
+			newSearch := s
+			newSearch.Start = name
+			if p.jobs.IsHandled(newSearch) {
+				continue
+			}
+			newSearch.History = make([]string, len(s.History))
+			copy(newSearch.History, s.History)
+			go p.res.Emmit(newSearch)
 		}
 	}
 

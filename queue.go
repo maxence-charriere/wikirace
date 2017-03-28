@@ -16,8 +16,8 @@ type Dequeuer interface {
 // Implemented on the top of go channel.
 type SearchQueue chan Search
 
-func MakeSearchQueue(size int) SearchQueue {
-	return make(SearchQueue, size)
+func MakeSearchQueue() SearchQueue {
+	return make(SearchQueue, 4096)
 }
 
 func (q SearchQueue) Len() int {
