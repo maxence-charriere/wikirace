@@ -133,7 +133,7 @@ func (p *JobPool) doJob(s Search) {
 	p.jobs.Inc()
 	defer p.jobs.Dec()
 
-	fmt.Println("starting job for", s.Start)
+	fmt.Println("searching in", s.Start)
 	historyEntry := strings.Replace(s.Start, "_", " ", -1)
 	s.History = append(s.History, historyEntry)
 
