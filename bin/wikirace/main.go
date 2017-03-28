@@ -1,26 +1,33 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/maxence-charriere/wikirace"
-	"github.com/maxence-charriere/wikirace/queue"
+	"golang.org/x/net/html"
+
+	"github.com/davecgh/go-spew/spew"
 )
 
 var (
-	enqueuer    wikirace.Enqueuer
-	mtx         sync.Mutex
 	searchCache = map[string]bool{}
+	mtx         sync.Mutex
+	searchCount uint
 )
+
+type Search struct {
+	WikiEnpoint string
+	Start       string
+	End         string
+	History     []string
+}
 
 func main() {
 	cfg, err := getConfig()
@@ -29,80 +36,128 @@ func main() {
 		return
 	}
 
-	if enqueuer, err = queue.NewNsqEnqueuer(cfg.Queue); err != nil {
-		log.Fatalln("connection to queue failed:", err)
-	}
-	defer enqueuer.Close()
+	searchChan := make(chan Search, 1000)
+	resChan := make(chan Search)
 
-	wikiURL, err := url.Parse("http://" + cfg.Bind)
-	if err != nil {
-		log.Fatalln("bad bind addr:", err)
-	}
-	wikiURL.Path = path.Join(wikiURL.Path, "results")
+	go startSearchWorker(searchChan, resChan)
 
-	s := wikirace.Search{
-		ResultEndpoint: wikiURL.String(),
-		WikiEnpoint:    cfg.Wiki,
-		Start:          cfg.Start,
-		End:            cfg.End,
-		History:        []string{cfg.Start},
-		StartedAt:      time.Now(),
+	searchChan <- Search{
+		WikiEnpoint: cfg.Wiki,
+		Start:       cfg.Start,
+		End:         cfg.End,
 	}
 
-	searchCache[s.Start] = true
-	go func() {
-		if err = enqueuer.Enqueue(s); err != nil {
-			log.Fatalln("unable to queue a search:", err)
+	res := <-resChan
+	spew.Dump(res)
+}
+
+func startSearchWorker(searchChan chan Search, resChan chan<- Search) {
+	for s := range searchChan {
+		if searchCount <= 8 {
+			go searchJob(s, searchChan, resChan)
+			continue
 		}
+
+		if searchCount == 0 {
+			log.Fatal("no path")
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func searchJob(s Search, searchChan chan<- Search, resChan chan<- Search) {
+	mtx.Lock()
+	searchCount++
+	mtx.Unlock()
+
+	defer func() {
+		mtx.Lock()
+		searchCount--
+		mtx.Unlock()
 	}()
 
-	http.HandleFunc("/results", onResult)
-	if err := http.ListenAndServe(cfg.Bind, nil); err != nil {
-		log.Fatalln("server error:", err)
-	}
-}
+	fmt.Println("starting job for", s.Start)
+	s.History = append(s.History, strings.Replace(s.Start, "_", " ", -1))
 
-func onResult(res http.ResponseWriter, req *http.Request) {
-	var s wikirace.Search
-	dec := json.NewDecoder(req.Body)
-	if err := dec.Decode(&s); err != nil {
-		log.Println("decode result failed:", err)
-		res.WriteHeader(http.StatusInternalServerError)
+	URL, err := url.Parse(s.WikiEnpoint)
+	if err != nil {
+		log.Println("url parsing failed:", err)
 		return
 	}
-	s.History = append(s.History, s.Start)
+	URL.Path = path.Join(URL.Path, "wiki", s.Start)
 
-	mtx.Lock()
-	defer mtx.Unlock()
-
-	// log.Println(s.Start)
-
-	if strings.ToLower(s.Start) == strings.ToLower(s.End) {
-		printSearchResult(s)
-		os.Exit(0)
-	}
-
-	if _, ok := searchCache[s.Start]; ok {
-		log.Println("~> Duplicate", s.Start)
-		res.WriteHeader(http.StatusOK)
+	res, err := http.Get(URL.String())
+	if err != nil {
+		log.Println("get request failed:", err)
 		return
 	}
+	defer res.Body.Close()
 
-	log.Println("~>REAL!!!!!!", s.Start)
-	searchCache[s.Start] = true
-	if err := enqueuer.Enqueue(s); err != nil {
-		res.WriteHeader(http.StatusInternalServerError)
-		log.Fatal(err)
-	}
+	parseHTML(res.Body, s, searchChan, resChan)
 }
 
-func printSearchResult(s wikirace.Search) {
-	ellapsed := time.Now().Sub(s.StartedAt)
+func parseHTML(body io.Reader, s Search, searchChan chan<- Search, resChan chan<- Search) error {
+	z := html.NewTokenizer(body)
 
-	for _, h := range s.History {
-		fmt.Println(h)
+	for {
+		switch token := z.Next(); token {
+		case html.ErrorToken:
+			if err := z.Err(); err != io.EOF {
+				return err
+			}
+			return nil
+
+		case html.StartTagToken:
+			if tag, _ := z.TagName(); tag[0] != 'a' {
+				continue
+			}
+
+			href := ""
+			for {
+				key, val, more := z.TagAttr()
+				if string(key) == "href" {
+					href = string(val)
+					break
+				}
+
+				if !more {
+					break
+				}
+			}
+
+			if len(href) == 0 {
+				continue
+			}
+
+			dir, target := path.Split(href)
+			if dir != "/wiki/" {
+				continue
+			}
+
+			if strings.ToLower(target) == strings.ToLower(s.End) {
+				s.History = append(s.History, strings.Replace(target, "_", " ", -1))
+
+				resChan <- s
+				return nil
+			}
+
+			if strings.Contains(target, ":") {
+				continue
+			}
+
+			newSearch := s
+			newSearch.Start = target
+			newSearch.History = make([]string, len(s.History))
+			copy(newSearch.History, s.History)
+
+			mtx.Lock()
+			if _, ok := searchCache[target]; ok {
+				mtx.Unlock()
+				continue
+			}
+			searchCache[target] = true
+			go func() { searchChan <- newSearch }()
+			mtx.Unlock()
+		}
 	}
-
-	fmt.Println("found in", ellapsed.Nanoseconds(), "ns")
-
 }

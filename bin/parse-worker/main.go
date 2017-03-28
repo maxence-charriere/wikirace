@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
 
 	"github.com/maxence-charriere/wikirace"
 	"github.com/maxence-charriere/wikirace/queue"
@@ -95,6 +96,10 @@ func parseHTML(body io.Reader, search wikirace.Search, h searchCompetionHandler)
 			wikiLink = path.Clean(wikiLink)
 			dir, target := path.Split(wikiLink)
 			if dir != "/wiki/" {
+				continue
+			}
+
+			if strings.Contains(target, ":") {
 				continue
 			}
 
