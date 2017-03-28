@@ -30,7 +30,7 @@ func main() {
 	status := wikirace.NewJobsStatus()
 	queue := wikirace.MakeSearchQueue()
 	res := wikirace.NewResultManager(search, status, queue)
-	jobPool := wikirace.NewJobPool(8, status, res, queue)
+	jobPool := wikirace.NewJobPool(512, status, res, queue)
 
 	queue.Enqueue(search)
 
