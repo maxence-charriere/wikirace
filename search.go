@@ -8,7 +8,6 @@ import (
 
 // Search represents a search description.
 type Search struct {
-	// ResultEndpoint string
 	WikiEndpoint string
 	Start        string
 	End          string
