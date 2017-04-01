@@ -8,6 +8,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	"golang.org/x/net/html"
 )
@@ -107,11 +108,19 @@ func NewJobPool(maxRoutines int, s JobsStatuer, e ResultEmitter, q Dequeuer) *Jo
 
 func (p *JobPool) Start() {
 	for {
-		p.jobs.Inc()
-		if search, ok := p.queue.Dequeue(); ok {
-			p.doJob(search)
+		select {
+		case <-p.stopChan:
+			return
+
+		default:
+			p.jobs.Inc()
+			if search, ok := p.queue.Dequeue(); ok {
+				p.doJob(search)
+			} else {
+				time.Sleep(time.Millisecond)
+			}
+			p.jobs.Dec()
 		}
-		p.jobs.Dec()
 	}
 }
 
