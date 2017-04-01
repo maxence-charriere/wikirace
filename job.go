@@ -8,7 +8,6 @@ import (
 	"path"
 	"strings"
 	"sync"
-	"time"
 
 	"golang.org/x/net/html"
 )
@@ -113,13 +112,13 @@ func (p *JobPool) Start() {
 			return
 
 		default:
-			if p.jobs.Count() < p.maxRoutines {
-				if search, ok := p.queue.Dequeue(); ok {
-					go p.doJob(search)
-					continue
-				}
+			// if p.jobs.Count() < p.maxRoutines {
+			if search, ok := p.queue.Dequeue(); ok {
+				go p.doJob(search)
+				continue
 			}
-			time.Sleep(time.Millisecond)
+			// }
+			// time.Sleep(time.Millisecond)
 		}
 	}
 }
@@ -133,7 +132,7 @@ func (p *JobPool) doJob(s Search) {
 	p.jobs.Inc()
 	defer p.jobs.Dec()
 
-	fmt.Println("searching in", s.Start)
+	// fmt.Println("searching in", s.Start)
 	historyEntry := strings.Replace(s.Start, "_", " ", -1)
 	s.History = append(s.History, historyEntry)
 
@@ -151,61 +150,101 @@ func (p *JobPool) doJob(s Search) {
 	}
 	defer res.Body.Close()
 
-	if err = p.parseHTML(res.Body, s); err != nil {
+	links, err := p.parseHTML(res.Body)
+	if err != nil {
 		fmt.Printf("\033[91m%v ~> KO: %v\n\033[00m", s.Start, err)
+		return
+	}
+
+	for _, link := range links {
+		newSearch := s
+		newSearch.Start = link
+		if p.jobs.IsHandled(newSearch) {
+			continue
+		}
+		newSearch.History = make([]string, len(s.History))
+		copy(newSearch.History, s.History)
+		go p.res.Emmit(newSearch)
 	}
 }
 
-func (p *JobPool) parseHTML(body io.Reader, s Search) error {
+func (p *JobPool) parseHTML(body io.Reader) (links []string, err error) {
+	titleScope := false
+
 	z := html.NewTokenizer(body)
 	for {
 		switch token := z.Next(); token {
 		case html.ErrorToken:
-			if err := z.Err(); err != io.EOF {
-				return err
+			if err = z.Err(); err != io.EOF {
+				return
 			}
-			return nil
+			err = nil
+			return
 
 		case html.StartTagToken:
-			if tag, _ := z.TagName(); tag[0] != 'a' {
-				continue
-			}
+			switch tag, _ := z.TagName(); string(tag) {
+			case "title":
+				titleScope = true
 
-			href := ""
-			for {
-				key, val, more := z.TagAttr()
-				if string(key) == "href" {
-					href = string(val)
-					break
-				}
-				if !more {
-					break
+			case "a":
+				if l, ok := parseLink(z); ok {
+					links = append(links, l)
 				}
 			}
-			if len(href) == 0 {
-				continue
-			}
 
-			// Exlude non wiki pages.
-			dir, name := path.Split(href)
-			if dir != "/wiki/" {
+		case html.TextToken:
+			if !titleScope {
 				continue
 			}
-
-			// Exclude special pages.
-			if strings.Contains(name, ":") {
-				continue
+			if l, ok := parseTitle(z); ok {
+				links = append(links, l)
 			}
-
-			newSearch := s
-			newSearch.Start = name
-			if p.jobs.IsHandled(newSearch) {
-				continue
-			}
-			newSearch.History = make([]string, len(s.History))
-			copy(newSearch.History, s.History)
-			go p.res.Emmit(newSearch)
+			titleScope = false
 		}
 	}
+}
 
+func parseTitle(z *html.Tokenizer) (link string, ok bool) {
+	title := string(z.Text())
+	splited := strings.Split(title, " -")
+
+	if len(splited) == 0 {
+		return
+	}
+
+	link = strings.TrimSpace(splited[0])
+	ok = true
+	return
+}
+
+func parseLink(z *html.Tokenizer) (link string, ok bool) {
+	href := ""
+	for {
+		key, val, more := z.TagAttr()
+		if string(key) == "href" {
+			href = string(val)
+			break
+		}
+		if !more {
+			break
+		}
+	}
+	if len(href) == 0 {
+		return
+	}
+
+	// Exlude non wiki pages.
+	dir, name := path.Split(href)
+	if dir != "/wiki/" {
+		return
+	}
+
+	// Exclude special pages.
+	if strings.Contains(name, ":") {
+		return
+	}
+
+	link = name
+	ok = true
+	return
 }

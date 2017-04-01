@@ -1,6 +1,8 @@
 package wikirace
 
 import (
+	"io/ioutil"
+	"net/http"
 	"testing"
 	"time"
 )
@@ -50,4 +52,16 @@ func TestJobPool(t *testing.T) {
 		pool.Stop()
 	}()
 	pool.Start()
+}
+
+func TestRedirect(t *testing.T) {
+	res, err := http.Get("https://en.wikipedia.org/wiki/Arabic_Language")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+
+	out, err := ioutil.ReadAll(res.Body)
+
+	t.Log(string(out))
 }

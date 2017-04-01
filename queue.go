@@ -34,12 +34,16 @@ func (q SearchQueue) Enqueue(s Search) error {
 // Dequeue dequeue s.
 // ok will be false if the queue is empty.
 func (q SearchQueue) Dequeue() (s Search, ok bool) {
-	select {
-	case s = <-q:
-		ok = true
-		return
+	// select {
+	// case s = <-q:
+	// 	ok = true
+	// 	return
 
-	default:
-		return
-	}
+	// default:
+	// 	return
+	// }
+
+	s = <-q
+	ok = true
+	return
 }
