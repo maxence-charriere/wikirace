@@ -12,7 +12,7 @@ func TestResultManagerPathFound(t *testing.T) {
 		StartedAt: time.Now(),
 	}
 	jobs := NewJobsStatus()
-	queue := MakeSearchQueue()
+	queue := NewSearchQueue()
 	manager := NewResultManager(initialSearch, jobs, queue)
 
 	manager.Emmit(Search{
@@ -34,7 +34,7 @@ func TestResultManagerPathNotFound(t *testing.T) {
 		StartedAt: time.Now(),
 	}
 	jobs := NewJobsStatus()
-	queue := MakeSearchQueue()
+	queue := NewSearchQueue()
 	manager := NewResultManager(initialSearch, jobs, queue)
 
 	manager.Emmit(initialSearch)
@@ -48,7 +48,7 @@ func TestResultManagerNewSearch(t *testing.T) {
 		StartedAt: time.Now(),
 	}
 	jobs := NewJobsStatus()
-	queue := MakeSearchQueue()
+	queue := NewSearchQueue()
 	manager := NewResultManager(initialSearch, jobs, queue)
 
 	jobs.Inc()

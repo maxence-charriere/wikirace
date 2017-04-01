@@ -41,7 +41,7 @@ func TestJobPool(t *testing.T) {
 		StartedAt:    time.Now(),
 	}
 	jobs := NewJobsStatus()
-	queue := MakeSearchQueue()
+	queue := NewSearchQueue()
 	res := NewResultManager(initialSearch, jobs, queue)
 
 	queue.Enqueue(initialSearch)

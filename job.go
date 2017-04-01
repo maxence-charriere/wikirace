@@ -107,19 +107,11 @@ func NewJobPool(maxRoutines int, s JobsStatuer, e ResultEmitter, q Dequeuer) *Jo
 
 func (p *JobPool) Start() {
 	for {
-		select {
-		case <-p.stopChan:
-			return
-
-		default:
-			// if p.jobs.Count() < p.maxRoutines {
-			if search, ok := p.queue.Dequeue(); ok {
-				go p.doJob(search)
-				continue
-			}
-			// }
-			// time.Sleep(time.Millisecond)
+		p.jobs.Inc()
+		if search, ok := p.queue.Dequeue(); ok {
+			p.doJob(search)
 		}
+		p.jobs.Dec()
 	}
 }
 
@@ -128,11 +120,12 @@ func (p *JobPool) Stop() {
 }
 
 func (p *JobPool) doJob(s Search) {
+	if p.jobs.IsHandled(s) {
+		return
+	}
 	p.jobs.SetHandled(s)
-	p.jobs.Inc()
-	defer p.jobs.Dec()
 
-	// fmt.Println("searching in", s.Start)
+	fmt.Println("searching in", s.Start)
 	historyEntry := strings.Replace(s.Start, "_", " ", -1)
 	s.History = append(s.History, historyEntry)
 
@@ -159,12 +152,9 @@ func (p *JobPool) doJob(s Search) {
 	for _, link := range links {
 		newSearch := s
 		newSearch.Start = link
-		if p.jobs.IsHandled(newSearch) {
-			continue
-		}
 		newSearch.History = make([]string, len(s.History))
 		copy(newSearch.History, s.History)
-		go p.res.Emmit(newSearch)
+		p.res.Emmit(newSearch)
 	}
 }
 

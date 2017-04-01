@@ -23,26 +23,32 @@ type ResultListener interface {
 type ResultManager struct {
 	intialSearch Search
 	jobs         JobsStatuer
-	queue        Queuer
-	resChan      chan Search
+	jobQueue     Queuer
+	resQueue     *SearchQueue
 }
 
 func NewResultManager(initialSeach Search, s JobsStatuer, q Queuer) *ResultManager {
 	return &ResultManager{
 		intialSearch: initialSeach,
 		jobs:         s,
-		queue:        q,
-		resChan:      make(chan Search, 4096),
+		jobQueue:     q,
+		resQueue:     NewSearchQueue(),
 	}
 }
 
 func (m *ResultManager) Emmit(res Search) {
-	m.resChan <- res
+	m.resQueue.Enqueue(res)
 }
 
 func (m *ResultManager) Listen() {
-	for res := range m.resChan {
-		// Complete path found.
+
+	for {
+		res, ok := m.resQueue.Dequeue()
+		if !ok {
+			time.Sleep(time.Millisecond)
+			continue
+		}
+
 		if len(res.Start) == len(res.End) &&
 			strings.ToLower(res.Start) == strings.ToLower(res.End) {
 			historyEntry := strings.Replace(res.Start, "_", " ", -1)
@@ -56,7 +62,7 @@ func (m *ResultManager) Listen() {
 		}
 
 		// No path found.
-		if m.queue.Len() == 0 && m.jobs.Count() == 0 {
+		if m.jobQueue.Len() == 0 && m.jobs.Count() == 0 {
 			fmt.Println("\033[00;1mResult:\033[00m")
 			fmt.Printf("  \033[91mno path found for %v to %v\033[00m\n\n",
 				m.intialSearch.Start,
@@ -66,7 +72,7 @@ func (m *ResultManager) Listen() {
 		}
 
 		// New search to queue.
-		m.queue.Enqueue(res)
+		m.jobQueue.Enqueue(res)
 	}
 	return
 }
