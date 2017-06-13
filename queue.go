@@ -1,5 +1,7 @@
 package wikirace
 
+import "github.com/foize/go.fifo"
+
 // Queuer is the interface that wraps an enqueue operation.
 type Queuer interface {
 	Len() int
@@ -13,33 +15,34 @@ type Dequeuer interface {
 }
 
 // SearchQueue is a queue used as pipeline for search operation.
-// Implemented on the top of go channel.
-type SearchQueue chan Search
-
-func MakeSearchQueue() SearchQueue {
-	return make(SearchQueue, 4096)
+type SearchQueue struct {
+	queue *fifo.Queue
 }
 
-func (q SearchQueue) Len() int {
-	return len(q)
+func NewSearchQueue() *SearchQueue {
+	return &SearchQueue{
+		queue: fifo.NewQueue(),
+	}
+}
+
+func (q *SearchQueue) Len() int {
+	return q.queue.Len()
 }
 
 // Enqueue enqueues s.
-// Block if q is full.
-func (q SearchQueue) Enqueue(s Search) error {
-	q <- s
+func (q *SearchQueue) Enqueue(s Search) error {
+	q.queue.Add(s)
 	return nil
 }
 
 // Dequeue dequeue s.
 // ok will be false if the queue is empty.
-func (q SearchQueue) Dequeue() (s Search, ok bool) {
-	select {
-	case s = <-q:
-		ok = true
-		return
-
-	default:
+func (q *SearchQueue) Dequeue() (s Search, ok bool) {
+	if q.queue.Len() == 0 {
 		return
 	}
+
+	s = q.queue.Next().(Search)
+	ok = true
+	return
 }

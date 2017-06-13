@@ -8,13 +8,12 @@ import (
 
 // Search represents a search description.
 type Search struct {
-	ResultEndpoint string
-	WikiEndpoint   string
-	Start          string
-	End            string
-	History        []string
-	StartedAt      time.Time
-	AchievedAt     time.Time
+	WikiEndpoint string
+	Start        string
+	End          string
+	History      []string
+	StartedAt    time.Time
+	AchievedAt   time.Time
 }
 
 func (s Search) String() string {

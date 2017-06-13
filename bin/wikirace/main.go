@@ -28,7 +28,7 @@ func main() {
 		StartedAt:    time.Now(),
 	}
 	status := wikirace.NewJobsStatus()
-	queue := wikirace.MakeSearchQueue()
+	queue := wikirace.NewSearchQueue()
 	res := wikirace.NewResultManager(search, status, queue)
 	jobPool := wikirace.NewJobPool(512, status, res, queue)
 
